@@ -1,0 +1,47 @@
+version: '3.7'
+############### Networks ###############
+networks:
+  test_traefik_network:
+    name: test_traefik_network
+  host-network: # Used by Traefik to get the client REAL IP
+    name: host-network
+    driver: bridge
+############### Volumes ###############
+volumes:
+  test_traefik:
+    name: test_traefik
+services:
+  ############### Example ###############
+  test_traefik:
+    image: traefik:1.7.14-alpine # See docs: https://docs.traefik.io/v1.7/
+    container_name: test_traefik
+    command:
+      - --logLevel=ERROR
+      - --defaultentrypoints=http
+      - --entryPoints=Name:http Address::80
+      - --retry
+      - --docker.endpoint=unix:///var/run/docker.sock
+      - --docker.watch=true
+      - --docker.exposedbydefault=false
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - host-network
+      - test_traefik_network
+  # Testing MQTT broker (Websocket protocol; since the TCP is NOT supported on Traefik 1.7.14-alpine)
+  # When connecting over http://127.0.0.1:80/mqtt, websockets works correctly
+  test_traefik_mqtt:
+    image: toke/mosquitto:latest
+    container_name: test_traefik_mqtt
+    labels:
+      - "traefik.enable=true"
+      - "traefik.frontend.passHostHeader=true"
+      - "traefik.mqttapi.port=9001"
+      - "traefik.mqttapi.frontend.rule=PathPrefix:/mqtt"
+    #ports:
+      #- "1883:1883" # Used to debug (shouldn't be needed) (MQTT)
+      #- "9001:9001" # Used to debug (shouldn't be needed) (MQTT over Websocket)
+    networks:
+      - test_traefik_network

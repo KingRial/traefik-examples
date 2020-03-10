@@ -1,0 +1,57 @@
+version: '3.7'
+############### Networks ###############
+networks:
+  test_traefik_network:
+    name: test_traefik_network
+  host-network: # Used by Traefik to get the client REAL IP
+    name: host-network
+    driver: bridge
+############### Volumes ###############
+volumes:
+  test_traefik:
+    name: test_traefik
+services:
+  ############### Example ###############
+  test_traefik:
+    image: traefik:2.1.6 # See docs: https://docs.traefik.io/
+    container_name: test_traefik
+    command:
+      - "--log.level=DEBUG"
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      - "--providers.docker.watch=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.mqtt.address=:1883"
+    ports:
+      - "80:80"
+      - "1883:1883"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - host-network
+      - test_traefik_network
+  # Testing MQTT broker (Websocket protocol and TCP protocol)
+  test_traefik_mqtt:
+    image: toke/mosquitto:latest
+    container_name: test_traefik_mqtt
+    labels:
+      - "traefik.enable=true"
+      # MQTT TCP protocol
+      - "traefik.tcp.routers.test_traefik_mqtt.entrypoints=mqtt"
+      - "traefik.tcp.routers.test_traefik_mqtt.service=test_traefik_mqtt"
+      - "traefik.tcp.routers.test_traefik_mqtt.rule=HostSNI(`*`)"
+      - "traefik.tcp.services.test_traefik_mqtt.loadbalancer.server.port=1883"
+      # MQTT Websocket protocol
+      - "traefik.http.routers.test_traefik_mqttws.entrypoints=web"
+      - "traefik.http.routers.test_traefik_mqttws.rule=PathPrefix(`/mqtt`)"
+      - "traefik.http.routers.test_traefik_mqttws.service=test_traefik_mqttws"
+      - "traefik.http.services.test_traefik_mqttws.loadbalancer.passhostheader=true"
+      - "traefik.http.services.test_traefik_mqttws.loadbalancer.server.port=9001"
+    #ports:
+    #  - "9883:9883" # Used to debug (shouldn't be needed) (MQTT)
+    #  - "9001:9001" # Used to debug (shouldn't be needed) (MQTT over Websocket)
+    networks:
+      #- host-network
+      - test_traefik_network
