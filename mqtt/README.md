@@ -5,7 +5,7 @@ This is a playground to test how [traefik](https://containo.us/traefik/) on diff
 - Redirect MQTT connection over TCP to a [Mosquitto MQTT Broker](https://mosquitto.org/)
 - Redirect MQTT connection over websocket to a [Mosquitto MQTT Broker](https://mosquitto.org/)
 
-## Mnual Test
+## Manual Test
 
 - TCP connection tested using [MQTT.fx](https://mqttfx.jensd.de/) by connecting to port **HOSTIP**:1883
 - Websocket connection test using [HIVEMQ Websocket Client](http://www.hivemq.com/demos/websocket-client/) by connecting to port **HOSTIP**:80
