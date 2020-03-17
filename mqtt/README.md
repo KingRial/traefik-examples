@@ -15,7 +15,7 @@ This is a playground to test how [traefik](https://containo.us/traefik/) on diff
 | Traefik Version  | TCP | Websocket |
 |------------------|-----|-----------|
 | 1.7.14 | Unsupported | Successful  |
-| 2.1.6  | Successful | Failed |
+| 2.1.6  | Successful | [Failed](https://community.containo.us/t/traefik-v2-and-mqtt-broker-tcp-and-websocket-connections-error-502-bad-gateway-caused-by-eof/4865) |
 
 ## Future
 
