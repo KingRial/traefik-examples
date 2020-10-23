@@ -1,0 +1,111 @@
+version: '3.7'
+############### Networks ###############
+networks:
+  test_traefik_network:
+    name: test_traefik_network
+  host-network: # Used by Reverse Proxy to get the client REAL IP
+    name: host-network
+    driver: bridge
+############### Volumes ###############
+volumes:
+  test_traefik:
+    name: test_traefik
+services:
+  ############### Cloud Reverse Proxy ###############
+  test_traefik:
+    image: traefik:2.1.6
+    container_name: test_traefik
+    command:
+      - "--log.level=DEBUG" # Log Level; Accepted values, in order of severity: "DEBUG", "INFO", "WARN", "ERROR", "FATAL", "PANIC"
+      #- --api # Enable Traefic API
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      - "--providers.docker.watch=true" # Enable watch docker changes
+      - "--providers.docker.exposedbydefault=false" # Expose containers by default in Traefik. If set to false, containers that don't have `traefik.enable=true` will be ignored.
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.mqtt.address=:1883"
+    ports:
+      - "80:80"     # The HTTP port
+      - "1883:1883" # MQTT
+      #- "443:443"   # HTTPS
+      #- "4443:4443" # mTLS
+      #- "8080:8080" # The Web UI (enabled by --api)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # So that Traefik can listen to the Docker events
+      #- ./traefik/traefik.toml:/traefik.toml # Traefik configuration file
+      - test_traefik:/acme # Tell Traefik to save SSL certs here
+    networks:
+      - host-network
+      - test_traefik_network
+  # Testing WebApp
+  test_traefik_nginx:
+    image: nginx:1.17.9
+    container_name: test_traefik_nginx
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nginx.entrypoints=web"
+      - "traefik.http.routers.nginx.rule=Host(`nginx.dev.mindcloud.it`)"
+      - "traefik.http.routers.nginx.priority=1" # Used to ensure this rule will be always the LAST to be checked
+      - "traefik.http.routers.nginx.service=nginx"
+      - "traefik.http.services.nginx.loadbalancer.server.port=80"
+      - "traefik.http.services.nginx.loadbalancer.passhostheader=true"
+      #- "traefik.docker.network=traefik"
+    #ports:
+    #  - "8081:80" # Used to debug (shouldn't be needed)
+    networks:
+      - test_traefik_network
+  # Testing Host Headers
+  test_traefik_whoami:
+    image: containous/whoami:latest
+    container_name: test_traefik_whoami
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.entrypoints=web"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.dev.mindcloud.it`)"
+      - "traefik.http.routers.whoami.priority=1" # Used to ensure this rule will be always the LAST to be checked
+      - "traefik.http.routers.whoami.service=whoami"
+      - "traefik.http.services.whoami.loadbalancer.server.port=80"
+      - "traefik.http.services.whoami.loadbalancer.passhostheader=true"
+    #ports:
+    #  - "8082:80" # Used to debug (shouldn't be needed)
+    networks:
+      - test_traefik_network
+  # Testing API backend (Faking usage from both domain with /api; Both: "http://nginx.mindcloud.it/api" or "http://whoami.mindcloud.it/api" will be redirected here)
+  test_traefik_backend:
+    image: containous/whoami:latest
+    container_name: test_traefik_backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.entrypoints=web"
+      - "traefik.http.routers.backend.rule=(Host(`nginx.dev.mindcloud.it`) || Host(`whoami.dev.mindcloud.it`)) && PathPrefix(`/api`)"
+      - "traefik.http.routers.backend.service=backend"
+      - "traefik.http.services.backend.loadbalancer.server.port=80"
+      - "traefik.http.services.backend.loadbalancer.passhostheader=true"
+    #ports:
+    #  - "8083:80" # Used to debug (shouldn't be needed)
+    networks:
+      - test_traefik_network
+  # Testing MQTT broker
+  test_traefik_mqtt:
+    image: toke/mosquitto:latest
+    container_name: test_traefik_mqtt
+    labels:
+      - "traefik.enable=true"
+      # MQTT TCP protocol
+      - "traefik.tcp.routers.mqtt.entrypoints=mqtt"
+      - "traefik.tcp.routers.mqtt.service=mqtt"
+      - "traefik.tcp.routers.mqtt.rule=HostSNI(`*`)"
+      - "traefik.tcp.services.mqtt.loadbalancer.server.port=1883"
+      # MQTT Websocket protocol
+      - "traefik.http.routers.mqttws.entrypoints=web"
+      - "traefik.http.routers.mqttws.rule=(Host(`nginx.dev.mindcloud.it`) || Host(`whoami.dev.mindcloud.it`)) && PathPrefix(`/mqtt`)"
+      - "traefik.http.routers.mqttws.service=mqttws"
+      - "traefik.http.services.mqttws.loadbalancer.server.port=9001"
+      - "traefik.http.services.mqttws.loadbalancer.passhostheader=true"
+    #ports:
+      #- "9883:1883" # Used to debug (shouldn't be needed) (MQTT)
+      #- "9001:9001" # Used to debug (shouldn't be needed) (MQTT over Websocket)
+    networks:
+      - test_traefik_network

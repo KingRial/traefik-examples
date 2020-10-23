@@ -1,0 +1,64 @@
+version: '3.7'
+############### Networks ###############
+networks:
+  test_traefik_network:
+    name: test_traefik_network
+  host-network: # Used by Reverse Proxy to get the client REAL IP
+    name: host-network
+    driver: bridge
+############### Volumes ###############
+volumes:
+  test_traefik:
+    name: test_traefik
+services:
+  ############### Cloud Reverse Proxy ###############
+  test_traefik:
+    image: traefik:2.1.6
+    container_name: test_traefik
+    command:
+      - "--log.level=DEBUG" # Log Level; Accepted values, in order of severity: "DEBUG", "INFO", "WARN", "ERROR", "FATAL", "PANIC"
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      - "--providers.docker.watch=true" # Enable watch docker changes
+      - "--providers.docker.exposedbydefault=false" # Expose containers by default in Traefik. If set to false, containers that don't have `traefik.enable=true` will be ignored.
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"     # The HTTP port
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # So that Traefik can listen to the Docker events
+    networks:
+      - host-network
+      - test_traefik_network
+  # Testing WebApp
+  test_traefik_nginx:
+    image: nginx:1.17.9
+    container_name: test_traefik_nginx
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.test_traefik_nginx.entrypoints=web"
+      - "traefik.http.routers.test_traefik_nginx.rule=PathPrefix(`/nginx`)"
+      - "traefik.http.routers.test_traefik_nginx.priority=1" # Used to ensure this rule will be always the LAST to be checked
+      - "traefik.http.routers.test_traefik_nginx.service=test_traefik_nginx"
+      - "traefik.http.services.test_traefik_nginx.loadbalancer.server.port=80"
+      - "traefik.http.services.test_traefik_nginx.loadbalancer.passhostheader=true"
+      #- "traefik.docker.network=traefik"
+    #ports:
+    #  - "8081:80" # Used to debug (shouldn't be needed)
+    networks:
+      - test_traefik_network
+  # Testing Host Headers
+  test_traefik_whoami:
+    image: containous/whoami:latest
+    container_name: test_traefik_whoami
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.test_traefik_whoami.entrypoints=web"
+      - "traefik.http.routers.test_traefik_whoami.rule=PathPrefix(`/whoami`)"
+      - "traefik.http.routers.test_traefik_whoami.service=test_traefik_whoami"
+      - "traefik.http.services.test_traefik_whoami.loadbalancer.server.port=80"
+      - "traefik.http.services.test_traefik_whoami.loadbalancer.passhostheader=true"
+    #ports:
+    #  - "8082:80" # Used to debug (shouldn't be needed)
+    networks:
+      - test_traefik_network
